@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASL Live — Minimalist Sign Translator</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">ASL</div>
+        <div>
+          <div class="brand-title">ASL Live</div>
+          <div class="brand-sub">Words &amp; Fingerspelling</div>
+        </div>
+      </div>
+
+      <div class="segmented" role="tablist" aria-label="Navigation">
+        <button id="tabWords" class="seg-btn active" type="button" role="tab" aria-selected="true">
+          Words <span class="seg-count">15</span>
+        </button>
+        <button id="tabLetters" class="seg-btn" type="button" role="tab" aria-selected="false">
+          Letters <span class="seg-count">A–Z</span>
+        </button>
+        <button id="tabDemo" class="seg-btn" type="button" role="tab" aria-selected="false">
+          Demo Signs <span class="seg-count">15</span>
+        </button>
+      </div>
+
+      <div class="status-cluster">
+        <span id="badgeWords" class="model-pill pending">
+          <span class="dot"></span>
+          <span class="pill-text">Words: Checking…</span>
+        </span>
+        <span id="badgeLetters" class="model-pill pending">
+          <span class="dot"></span>
+          <span class="pill-text">Letters: Pending</span>
+        </span>
+        <button id="btnReload" class="btn btn-ghost btn-sm" type="button" title="Check models/ folder for newly added weights">
+          Reload Models
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="liveView" class="workspace">
+    <!-- Left Column: Stage & Controls -->
+    <section class="card stage-card">
+      <div id="stageBox" class="stage-viewport">
+        <video id="liveVideo" autoplay playsinline muted class="hidden mirrored"></video>
+        <canvas id="overlayCanvas" class="hidden"></canvas>
+        <img id="previewImg" alt="Uploaded sign analysis preview" class="hidden" />
+
+        <div id="stageEmpty" class="stage-empty">
+          <div class="empty-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 7l-7 5 7 5V7z" />
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+            </svg>
+          </div>
+          <p class="empty-title">Ready to translate</p>
+          <p class="empty-desc">Start your webcam or drop a sign clip / image here.</p>
+        </div>
+
+        <div id="stagePill" class="stage-pill">IDLE</div>
+      </div>
+
+      <div class="controls-bar">
+        <div class="controls-left">
+          <button id="btnCamera" class="btn btn-primary" type="button">Start Camera</button>
+          <button id="btnUpload" class="btn btn-outline" type="button">Upload Video</button>
+          <input id="fileInput" type="file" accept="video/*" class="hidden" />
+
+          <div id="wordSegControls" class="seg-inline">
+            <button id="btnAutoMode" class="btn btn-outline btn-sm" type="button" title="Toggle Auto Motion vs Manual Capture">
+              Auto Motion
+            </button>
+            <button id="btnManualCapture" class="btn btn-emerald btn-sm hidden" type="button">
+              Start Sign
+            </button>
+          </div>
+        </div>
+
+        <div class="controls-right">
+          <label class="toggle-chip">
+            <input id="chkMirror" type="checkbox" checked />
+            <span>Mirror</span>
+          </label>
+          <label class="toggle-chip">
+            <input id="chkSkeleton" type="checkbox" checked />
+            <span>Skeleton</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Telemetry & Vocabulary -->
+    <aside class="telemetry-col">
+      <div id="missingBanner" class="notice-banner hidden">
+        <div class="notice-title">Model weights not added yet</div>
+        <div id="missingBannerText" class="notice-body">
+          Place exported ONNX &amp; JSON files in <code>models/</code>, then click <strong>Reload Models</strong>.
+        </div>
+      </div>
+
+      <section class="card pred-card">
+        <div class="card-head">
+          <span class="eyebrow">RECOGNITION</span>
+          <span id="lblLatency" class="latency-pill">— ms</span>
+        </div>
+
+        <div class="pred-main">
+          <div id="lblPred" class="pred-value">—</div>
+          <div id="lblConf" class="pred-conf">—</div>
+        </div>
+        <div id="lblStatus" class="pred-status">Ready · Start camera or upload a file</div>
+
+        <div class="divider"></div>
+
+        <div class="sub-eyebrow">TOP CANDIDATES</div>
+        <div id="topkList" class="topk-list"></div>
+
+        <div class="sub-eyebrow row-between">
+          <span id="lblMeterTitle">HAND MOTION ENERGY</span>
+          <span id="lblMeterHint" class="meter-hint">Auto gate</span>
+        </div>
+        <div class="meter-track">
+          <div id="meterFill" class="meter-fill"></div>
+          <div id="meterMarker" class="meter-marker"></div>
+        </div>
+      </section>
+
+      <section class="card vocab-card">
+        <div class="card-head">
+          <span id="lblVocabTitle" class="eyebrow">15 TRAINED WORDS</span>
+          <span id="lblVocabMeta" class="vocab-meta"></span>
+        </div>
+        <div id="vocabGrid" class="vocab-grid words"></div>
+      </section>
+    </aside>
+
+    <!-- Bottom Full-Width Transcript -->
+    <section class="card transcript-card">
+      <div class="transcript-head">
+        <div class="transcript-title-group">
+          <span class="eyebrow">TRANSCRIPT</span>
+          <label class="toggle-chip compact">
+            <input id="chkAutoAppend" type="checkbox" checked />
+            <span>Auto-append</span>
+          </label>
+        </div>
+
+        <div class="transcript-actions">
+          <button id="btnSpace" class="btn btn-ghost btn-sm" type="button">Space</button>
+          <button id="btnUndo" class="btn btn-ghost btn-sm" type="button">Undo</button>
+          <button id="btnClear" class="btn btn-ghost btn-sm" type="button">Clear</button>
+          <button id="btnCopy" class="btn btn-ghost btn-sm" type="button">Copy</button>
+          <button id="btnSpeak" class="btn btn-outline btn-sm" type="button">Speak</button>
+        </div>
+      </div>
+
+      <div id="transcriptBox" class="transcript-output empty">
+        Confirmed words and fingerspelled letters appear here…
+      </div>
+    </section>
+  </main>
+
+  <section id="demoView" class="demo-workspace hidden" aria-label="Demo Signs Guide">
+    <div class="card demo-header-card">
+      <div>
+        <h1 class="demo-title">Demo Signs Guide</h1>
+        <p class="demo-subtitle">
+          New to ASL? Follow each diagram from start to finish (black arrows show hand movement), then pause briefly after each sign when testing live.
+        </p>
+      </div>
+      <div class="demo-tools">
+        <input id="demoFilter" class="demo-search" type="search" placeholder="Filter signs (e.g. water)…" aria-label="Filter demo signs" />
+        <button id="btnTryWords" class="btn btn-primary btn-sm" type="button">Try Live in Words</button>
+      </div>
+    </div>
+
+    <div id="demoGrid" class="demo-grid"></div>
+  </section>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "feature_version": "word_v1_688",
+  "labels": [
+    "eat",
+    "family",
+    "finish",
+    "friend",
+    "hello",
+    "help",
+    "love",
+    "more",
+    "no",
+    "please",
+    "stop",
+    "thank you",
+    "want",
+    "water",
+    "yes"
+  ],
+  "seq_len": 48,
+  "feature_dim": 688,
+  "test_top1_acc": 0.9078,
+  "test_macro_f1": 0.9104
+}
