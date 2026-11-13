@@ -1,0 +1,21 @@
+# Python caches & environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Duplicate unpacked export folders (primary weights live directly in models/)
+models/asl_words_export/
+models/asl_letters_export/
+models/*.tmp
+
+# Personal calibration recordings (keep directory placeholder)
+calibration_data/*
+!calibration_data/.gitkeep
+
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
