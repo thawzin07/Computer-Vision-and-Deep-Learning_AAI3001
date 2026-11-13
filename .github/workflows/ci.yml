@@ -1,0 +1,31 @@
+name: Hosting CI
+
+on:
+  push:
+    branches: [main_hosting, main, thawzinhtun]
+  pull_request:
+    branches: [main_hosting, main, thawzinhtun]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosting-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Test deployment image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check browser JavaScript
+        run: node --check web/static/app.js
+      - name: Build image and run unit, model and HTTP/WebSocket checks
+        run: docker build --file Dockerfile.vercel --target production --tag asl-live:ci .
+      - name: Verify the final runtime image
+        run: docker run --rm --entrypoint python asl-live:ci scripts/smoke_hosting.py --spawn-server

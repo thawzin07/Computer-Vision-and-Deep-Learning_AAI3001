@@ -256,6 +256,7 @@ class LetterOnnxPredictor:
         crop_tensor: np.ndarray,
         geo_vec: np.ndarray,
         hand_pts: Optional[np.ndarray] = None,
+        dynamic_detector: Optional[DynamicJZDetector] = None,
     ) -> tuple[np.ndarray, list[tuple[str, float]], float, Optional[str]]:
         """Run static hybrid inference + dynamic J/Z trajectory check."""
         static_probs = np.zeros(len(self.labels), dtype=np.float32)
@@ -274,7 +275,8 @@ class LetterOnnxPredictor:
 
         dynamic_match = None
         if hand_pts is not None:
-            dynamic_match = self.jz_detector.update(hand_pts, static_probs if self.available else None)
+            detector = dynamic_detector if dynamic_detector is not None else self.jz_detector
+            dynamic_match = detector.update(hand_pts, static_probs if self.available else None)
 
         probs = static_probs.copy()
         dynamic_tag: Optional[str] = None

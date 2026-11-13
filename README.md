@@ -4,6 +4,15 @@ An academic Deep Learning & Computer Vision system for real-time **American Sign
 
 ---
 
+## Hosted deployment
+
+The `main_hosting` branch deploys the complete app to Vercel using a tested Linux
+container. GitHub Actions validates the image; Vercel's Git integration deploys
+branch updates. See [DEPLOYMENT.md](DEPLOYMENT.md) for the release workflow,
+verification commands, upload limits and live-session behavior.
+
+---
+
 ## Key Capabilities & Model Benchmarks
 
 | Track | Model Architecture | Input Representation | Held-Out Test Performance |

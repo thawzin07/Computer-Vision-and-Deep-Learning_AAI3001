@@ -1,0 +1,33 @@
+FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS base
+
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
+    MPLCONFIGDIR=/tmp/matplotlib OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+WORKDIR /app
+
+# MediaPipe imports OpenCV and sounddevice, including on a CPU-only server.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libegl1 libgles2 libglib2.0-0 libportaudio2 \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements-hosting.txt .
+RUN pip install --no-cache-dir -r requirements-hosting.txt
+COPY src/ src/
+COPY models/ models/
+COPY web/ web/
+COPY demo_images/ demo_images/
+COPY app.py web_app.py ./
+COPY scripts/smoke_hosting.py scripts/smoke_hosting.py
+
+FROM base AS test
+COPY requirements-test.txt .
+RUN pip install --no-cache-dir -r requirements-test.txt
+COPY tests/ tests/
+COPY colab/ colab/
+COPY scripts/ scripts/
+RUN python -m pytest -q && python scripts/smoke_hosting.py --spawn-server \
+    && touch /tmp/hosting-tests-passed
+
+FROM base AS production
+# Referencing the test stage makes successful tests mandatory for every build.
+COPY --from=test /tmp/hosting-tests-passed /app/hosting-tests-passed
+EXPOSE 80
+CMD ["sh", "-c", "exec python -m uvicorn app:app --host 0.0.0.0 --port ${PORT:-80} --ws-max-size 262144"]

@@ -410,7 +410,13 @@
       };
 
       ws.onclose = () => {
-        if (state.streaming) stopCamera();
+        if (state.streaming) {
+          stopCamera();
+          els.lblStatus.textContent = "Connection ended. Start Camera again to resume signing.";
+        }
+      };
+      ws.onerror = () => {
+        els.lblStatus.textContent = "Could not connect to live recognition. Try Start Camera again.";
       };
     } catch (err) {
       els.lblStatus.textContent = `Camera error: ${err.message || "Permission denied or no camera found"}`;
@@ -492,6 +498,10 @@
 
   async function handleFileUpload(file) {
     if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      els.lblStatus.textContent = "Choose an image or short video smaller than 3 MiB.";
+      return;
+    }
     if (state.streaming) stopCamera();
 
     const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|avi|mkv|webm)$/i.test(file.name);

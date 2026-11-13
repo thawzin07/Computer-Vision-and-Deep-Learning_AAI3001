@@ -19,3 +19,8 @@ calibration_data/*
 # OS / editor artifacts
 .DS_Store
 Thumbs.db
+
+# Hosting metadata and local secrets
+.vercel/
+.env
+.env.*

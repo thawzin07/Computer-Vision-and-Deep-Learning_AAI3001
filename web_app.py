@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -40,11 +41,12 @@ from asl_live.features import (
     extract_word_static_frame,
 )
 from asl_live.landmarks import FrameLandmarks, HolisticExtractor, draw_landmarks_overlay
-from asl_live.predictors import LetterOnnxPredictor, WordOnnxPredictor
+from asl_live.predictors import DynamicJZDetector, LetterOnnxPredictor, WordOnnxPredictor
 from asl_live.stabilizer import LetterStreamStabilizer, PredictionState, WordStreamStabilizer
 
 STATIC_DIR = PROJECT_ROOT / "web" / "static"
 DEMO_IMAGES_DIR = PROJECT_ROOT / "demo_images"
+MAX_UPLOAD_BYTES = 3 * 1024 * 1024
 
 DEMO_SIGN_GUIDE: list[dict[str, str]] = [
     {
@@ -383,6 +385,7 @@ class _LiveWebSession:
         with registry.lock:
             self.word_stab = WordStreamStabilizer(registry.word_predictor)
         self.letter_stab = LetterStreamStabilizer()
+        self.jz_detector = DynamicJZDetector()
         self.extractor = HolisticExtractor(mediapipe_dir=registry.mediapipe_dir, video_mode=True)
         self.proc_lock = threading.Lock()
         self.t0 = time.perf_counter()
@@ -400,8 +403,7 @@ class _LiveWebSession:
                     self.mode = new_mode
                     self.word_stab.reset()
                     self.letter_stab.reset()
-                    with self.registry.lock:
-                        self.registry.letter_predictor.jz_detector.reset()
+                    self.jz_detector.reset()
                 if "auto_word_mode" in msg:
                     want_auto = bool(msg["auto_word_mode"])
                     if want_auto != self.word_stab.auto_mode:
@@ -413,8 +415,7 @@ class _LiveWebSession:
             if mtype == "reset":
                 self.word_stab.reset()
                 self.letter_stab.reset()
-                with self.registry.lock:
-                    self.registry.letter_predictor.jz_detector.reset()
+                self.jz_detector.reset()
                 return {"type": "ack", "reset": True}
 
             if mtype == "manual_capture" and self.mode == "words":
@@ -475,7 +476,8 @@ class _LiveWebSession:
                             raw_bgr, lm.primary_hand, lm.primary_handedness
                         )
                         probs, _, lat_ms, dyn_tag = lp.predict(
-                            crop_tensor, geo_vec, hand_pts=lm.primary_hand
+                            crop_tensor, geo_vec, hand_pts=lm.primary_hand,
+                            dynamic_detector=self.jz_detector,
                         )
                         pred = self.letter_stab.update(
                             probs=probs,
@@ -485,7 +487,7 @@ class _LiveWebSession:
                             hand_present=True,
                         )
                     else:
-                        lp.jz_detector.reset()
+                        self.jz_detector.reset()
                         pred = self.letter_stab.update(
                             probs=np.zeros(len(lp.labels), dtype=np.float32),
                             labels=lp.labels,
@@ -523,6 +525,23 @@ def create_app(models_dir: Path = DEFAULT_MODELS_DIR) -> FastAPI:
     registry = ModelRegistry(models_dir=models_dir)
     app.state.registry = registry
 
+    @app.get("/healthz")
+    async def healthz() -> JSONResponse:
+        status = registry.status_dict()
+        ready = all(status[mode]["available"] for mode in ("words", "letters"))
+        ready = ready and all((registry.mediapipe_dir / name).is_file() for name in (
+            "hand_landmarker.task", "pose_landmarker_lite.task",
+        ))
+        return JSONResponse({"ready": ready, "revision": os.getenv("VERCEL_GIT_COMMIT_SHA", "local")},
+                            status_code=200 if ready else 503,
+                            headers={"Cache-Control": "no-store"})
+
+    async def read_upload(file: UploadFile) -> bytes:
+        raw = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(raw) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Choose a file smaller than 3 MiB.")
+        return raw
+
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     if DEMO_IMAGES_DIR.exists():
@@ -546,7 +565,7 @@ def create_app(models_dir: Path = DEFAULT_MODELS_DIR) -> FastAPI:
 
     @app.post("/api/predict/video")
     async def api_predict_video(file: UploadFile = File(...)) -> JSONResponse:
-        raw = await file.read()
+        raw = await read_upload(file)
         if not raw:
             raise HTTPException(status_code=400, detail="Empty video upload.")
         suffix = Path(file.filename or "clip.mp4").suffix or ".mp4"
@@ -555,7 +574,7 @@ def create_app(models_dir: Path = DEFAULT_MODELS_DIR) -> FastAPI:
 
     @app.post("/api/predict/image")
     async def api_predict_image(file: UploadFile = File(...)) -> JSONResponse:
-        raw = await file.read()
+        raw = await read_upload(file)
         if not raw:
             raise HTTPException(status_code=400, detail="Empty image upload.")
         res = await run_in_threadpool(_evaluate_image_bytes, registry, raw)

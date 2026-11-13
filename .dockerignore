@@ -1,0 +1,14 @@
+.git
+.github
+.vercel
+.env
+.env.*
+.venv
+venv
+env
+**/__pycache__
+.pytest_cache
+calibration_data
+models/asl_words_export
+models/asl_letters_export
+*.log
