@@ -1,0 +1,44 @@
+name: Hosting CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosting-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Test deployment image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check browser JavaScript
+        run: node --check web/static/app.js
+      - name: Build the production Dockerfile
+        run: docker build --tag asl-live:ci .
+      - name: Test application logic, notebooks, and ONNX inference
+        run: |
+          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+            --entrypoint sh asl-live:ci -ec \
+            'python -m pip install nbformat==5.10.4 && python -m pytest -q -p no:cacheprovider'
+      - name: Smoke-test the running image on the Vercel port
+        run: |
+          docker run --detach --name asl-live-smoke --env PORT=80 asl-live:ci
+          docker exec -i asl-live-smoke python - --url http://127.0.0.1:80 < scripts/smoke_hosting.py
+      - name: Show runtime logs on failure
+        if: failure()
+        run: |
+          if docker inspect asl-live-smoke >/dev/null 2>&1; then
+            docker logs asl-live-smoke
+          fi
