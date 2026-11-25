@@ -1,0 +1,9 @@
+{
+  "name": "ASL v1 Baseline (Legacy)",
+  "domain": "v1 Conformer (90.8%) + HybridHandNet v1 (99.9%)",
+  "description": "Original v1 baseline ONNX weights preserved for live A/B comparison against v2.",
+  "word_onnx": "asl_words_conformer.onnx",
+  "word_config": "word_model_config.json",
+  "letter_onnx": "asl_letters_hybrid.onnx",
+  "letter_config": "letter_model_config.json"
+}

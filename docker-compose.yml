@@ -1,0 +1,14 @@
+services:
+  asl-live:
+    build: .
+    ports:
+      - "7860:7860"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=7860
+      - DEPLOYMENT_ENV=docker-local
+      - ASL_PREFER_INT8=0
+    volumes:
+      - ./models:/app/models
+      - ./calibration_data:/app/calibration_data
+    restart: unless-stopped

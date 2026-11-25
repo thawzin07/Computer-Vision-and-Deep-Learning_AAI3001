@@ -1,5 +1,8 @@
 {
   "feature_version": "word_v1_688",
+  "notebook_version": "2026-11-25",
+  "architecture": "DualEnsemble(BiGRU+ConformerV2+SupCon, alpha=0.00)",
+  "ensemble_alpha": 0.0,
   "labels": [
     "eat",
     "family",
@@ -19,6 +22,15 @@
   ],
   "seq_len": 48,
   "feature_dim": 688,
-  "test_top1_acc": 0.9078,
-  "test_macro_f1": 0.9104
+  "int8_file": "asl_words_conformer_int8.onnx",
+  "fp32_size_mb": 9.185,
+  "int8_size_mb": 5.65,
+  "fp32_latency_ms": 3.75,
+  "int8_latency_ms": 4.924,
+  "test_top1_acc": 1.0,
+  "test_macro_f1": 1.0,
+  "int8_top1_acc": 1.0,
+  "int8_macro_f1": 1.0,
+  "cv5_macro_f1_mean": 0.9768,
+  "cv5_macro_f1_std": 0.0217
 }

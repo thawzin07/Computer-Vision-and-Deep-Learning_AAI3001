@@ -44,8 +44,17 @@ class PredictionState:
 class WordStreamStabilizer:
     """Active-signing motion gate + rolling sequence evaluator for 15 dynamic ASL words."""
 
-    def __init__(self, predictor: WordOnnxPredictor) -> None:
+    def __init__(
+        self,
+        predictor: WordOnnxPredictor,
+        confidence_threshold: float = WORD_CONFIDENCE_THRESHOLD,
+        margin_threshold: float = WORD_MARGIN_THRESHOLD,
+        motion_threshold: float = WORD_MOTION_ENERGY_THRESHOLD,
+    ) -> None:
         self.predictor = predictor
+        self.confidence_threshold = float(confidence_threshold)
+        self.margin_threshold = float(margin_threshold)
+        self.motion_threshold = float(motion_threshold)
         self.auto_mode = True
         self.manual_recording = False
         self.prev_lm: Optional[FrameLandmarks] = None
@@ -133,7 +142,7 @@ class WordStreamStabilizer:
 
         if self.state == "IDLE":
             self.lead_in_buffer.append(static_vec)
-            if hands_visible and self.smoothed_energy >= WORD_MOTION_ENERGY_THRESHOLD:
+            if hands_visible and self.smoothed_energy >= self.motion_threshold:
                 self.state = "SIGNING"
                 self.active_static = list(self.lead_in_buffer)
                 self.idle_streak = 0
@@ -153,7 +162,7 @@ class WordStreamStabilizer:
         self.active_static.append(static_vec)
         self.frame_counter += 1
 
-        if (not hands_visible) or (self.smoothed_energy < WORD_MOTION_ENERGY_THRESHOLD * 0.65):
+        if (not hands_visible) or (self.smoothed_energy < self.motion_threshold * 0.65):
             self.idle_streak += 1
         else:
             self.idle_streak = 0
@@ -221,7 +230,7 @@ class WordStreamStabilizer:
         margin = top1_conf - top2_conf
 
         confirmed: Optional[str] = None
-        if top1_conf >= WORD_CONFIDENCE_THRESHOLD and margin >= WORD_MARGIN_THRESHOLD:
+        if top1_conf >= self.confidence_threshold and margin >= self.margin_threshold:
             confirmed = top1_label
             status = f"DETECTED: {top1_label.upper()}"
         elif final and top1_conf >= 0.52:
@@ -243,9 +252,15 @@ class WordStreamStabilizer:
 class LetterStreamStabilizer:
     """EMA probability smoother + hold-to-confirm dwell detector for A-Z fingerspelling."""
 
-    def __init__(self, alpha: float = LETTER_EMA_ALPHA, hold_sec: float = LETTER_HOLD_CONFIRM_SEC) -> None:
+    def __init__(
+        self,
+        alpha: float = LETTER_EMA_ALPHA,
+        hold_sec: float = LETTER_HOLD_CONFIRM_SEC,
+        confidence_threshold: float = LETTER_CONFIDENCE_THRESHOLD,
+    ) -> None:
         self.alpha = alpha
         self.hold_sec = hold_sec
+        self.confidence_threshold = float(confidence_threshold)
         self.ema_probs: Optional[np.ndarray] = None
         self.candidate_label: Optional[str] = None
         self.candidate_since: float = 0.0
@@ -313,7 +328,7 @@ class LetterStreamStabilizer:
         hold_progress = 0.0
         status = "SIGNING LETTER"
 
-        if top1_conf >= LETTER_CONFIDENCE_THRESHOLD:
+        if top1_conf >= self.confidence_threshold:
             if self.candidate_label != top1_label:
                 self.candidate_label = top1_label
                 self.candidate_since = now

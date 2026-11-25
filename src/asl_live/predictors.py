@@ -28,16 +28,32 @@ def _softmax(logits: np.ndarray, axis: int = -1) -> np.ndarray:
     return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
 
 
-class WordOnnxPredictor:
-    """ONNX inference wrapper for the 15-word Conformer sequence model."""
+def _resolve_onnx_variant(base_onnx: Path, prefer_int8: bool) -> tuple[Path, str]:
+    """Select INT8 quantized ONNX variant when requested and present, else FP32."""
+    int8_candidate = base_onnx.with_name(f"{base_onnx.stem}_int8.onnx")
+    if prefer_int8 and int8_candidate.exists():
+        return int8_candidate, "INT8"
+    return base_onnx, "FP32"
 
-    def __init__(self, models_dir: Path = DEFAULT_MODELS_DIR) -> None:
+
+class WordOnnxPredictor:
+    """ONNX inference wrapper for the Conformer / Ensemble word sequence model."""
+
+    def __init__(
+        self,
+        models_dir: Path = DEFAULT_MODELS_DIR,
+        onnx_path: Optional[Path] = None,
+        config_path: Optional[Path] = None,
+        prefer_int8: bool = False,
+    ) -> None:
         self.models_dir = Path(models_dir)
-        self.onnx_path = self.models_dir / "asl_words_conformer.onnx"
-        self.config_path = self.models_dir / "word_model_config.json"
+        base_onnx = Path(onnx_path) if onnx_path else self.models_dir / "asl_words_conformer.onnx"
+        self.onnx_path, self.precision = _resolve_onnx_variant(base_onnx, prefer_int8)
+        self.config_path = Path(config_path) if config_path else self.models_dir / "word_model_config.json"
         self.labels = list(WORDS_15)
         self.seq_len = WORD_SEQ_LEN
         self.feature_dim = WORD_FEATURE_DIM
+        self.model_size_mb = 0.0
         self.meta: dict = {}
         self.session = None
         self.load_error: Optional[str] = None
@@ -73,10 +89,12 @@ class WordOnnxPredictor:
 
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = 4
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         providers = ["CPUExecutionProvider"]
         self.session = ort.InferenceSession(str(self.onnx_path), sess_options=opts, providers=providers)
         self.input_name = self.session.get_inputs()[0].name
         self.output_name = self.session.get_outputs()[0].name
+        self.model_size_mb = round(self.onnx_path.stat().st_size / (1024 * 1024), 2)
         self.load_error = None
 
     def predict(self, seq_features: np.ndarray) -> tuple[np.ndarray, list[tuple[str, float]], float]:
@@ -94,7 +112,7 @@ class WordOnnxPredictor:
 
         probs = _softmax(logits, axis=-1)
         mean_probs = np.mean(probs, axis=0)
-        order = np.argsort(mean_probs)[::-1][:3]
+        order = np.argsort(mean_probs)[::-1][: min(3, len(self.labels))]
         topk = [(self.labels[int(i)], float(mean_probs[int(i)])) for i in order]
         return mean_probs.astype(np.float32), topk, latency_ms
 
@@ -197,15 +215,23 @@ class DynamicJZDetector:
 
 
 class LetterOnnxPredictor:
-    """ONNX inference wrapper for the Dual-Branch HybridHandNet (A-Z)."""
+    """ONNX inference wrapper for the Dual-Branch HybridHandNet (A-Z / dynamic packs)."""
 
-    def __init__(self, models_dir: Path = DEFAULT_MODELS_DIR) -> None:
+    def __init__(
+        self,
+        models_dir: Path = DEFAULT_MODELS_DIR,
+        onnx_path: Optional[Path] = None,
+        config_path: Optional[Path] = None,
+        prefer_int8: bool = False,
+    ) -> None:
         self.models_dir = Path(models_dir)
-        self.onnx_path = self.models_dir / "asl_letters_hybrid.onnx"
-        self.config_path = self.models_dir / "letter_model_config.json"
+        base_onnx = Path(onnx_path) if onnx_path else self.models_dir / "asl_letters_hybrid.onnx"
+        self.onnx_path, self.precision = _resolve_onnx_variant(base_onnx, prefer_int8)
+        self.config_path = Path(config_path) if config_path else self.models_dir / "letter_model_config.json"
         self.labels = list(LETTERS_26)
         self.crop_size = LETTER_CROP_SIZE
         self.geo_dim = LETTER_GEO_DIM
+        self.model_size_mb = 0.0
         self.meta: dict = {}
         self.session = None
         self.load_error: Optional[str] = None
@@ -242,6 +268,7 @@ class LetterOnnxPredictor:
 
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = 4
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self.session = ort.InferenceSession(
             str(self.onnx_path), sess_options=opts, providers=["CPUExecutionProvider"]
         )
@@ -249,6 +276,7 @@ class LetterOnnxPredictor:
         self.image_input_name = inputs[0].name
         self.geo_input_name = inputs[1].name
         self.output_name = self.session.get_outputs()[0].name
+        self.model_size_mb = round(self.onnx_path.stat().st_size / (1024 * 1024), 2)
         self.load_error = None
 
     def predict(
@@ -256,6 +284,7 @@ class LetterOnnxPredictor:
         crop_tensor: np.ndarray,
         geo_vec: np.ndarray,
         hand_pts: Optional[np.ndarray] = None,
+        jz_detector: Optional[DynamicJZDetector] = None,
     ) -> tuple[np.ndarray, list[tuple[str, float]], float, Optional[str]]:
         """Run static hybrid inference + dynamic J/Z trajectory check."""
         static_probs = np.zeros(len(self.labels), dtype=np.float32)
@@ -274,21 +303,22 @@ class LetterOnnxPredictor:
 
         dynamic_match = None
         if hand_pts is not None:
-            dynamic_match = self.jz_detector.update(hand_pts, static_probs if self.available else None)
+            det = jz_detector if jz_detector is not None else self.jz_detector
+            dynamic_match = det.update(hand_pts, static_probs if self.available else None)
 
         probs = static_probs.copy()
         dynamic_tag: Optional[str] = None
         if dynamic_match is not None:
             letter, conf = dynamic_match
-            idx = ord(letter) - ord("A")
-            if 0 <= idx < len(probs):
+            if letter in self.labels:
+                idx = self.labels.index(letter)
                 probs = probs * 0.15
                 probs[idx] = conf
                 probs = probs / max(float(np.sum(probs)), 1e-6)
                 dynamic_tag = f"{letter} (motion)"
 
         if self.available or dynamic_match is not None:
-            order = np.argsort(probs)[::-1][:3]
+            order = np.argsort(probs)[::-1][: min(3, len(self.labels))]
             topk = [(self.labels[int(i)], float(probs[int(i)])) for i in order]
         else:
             topk = []

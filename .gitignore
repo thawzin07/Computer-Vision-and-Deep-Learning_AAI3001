@@ -7,9 +7,12 @@ __pycache__/
 venv/
 env/
 
-# Duplicate unpacked export folders (primary weights live directly in models/)
+# Duplicate unpacked export folders & zips (primary weights live directly in models/ and models/packs/)
 models/asl_words_export/
 models/asl_letters_export/
+models/asl_words_export_v2_*/
+models/asl_letters_export_v2_*/
+models/*.zip
 models/*.tmp
 
 # Personal calibration recordings (keep directory placeholder)
