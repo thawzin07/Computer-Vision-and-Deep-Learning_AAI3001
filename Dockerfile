@@ -9,10 +9,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# OpenCV / MediaPipe system runtime dependencies (no GUI X11 needed beyond GL/glib)
+# Native dependencies for OpenCV and the MediaPipe Tasks runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
+    libegl1 \
+    libgles2 \
     libglib2.0-0 \
+    libportaudio2 \
     libsm6 \
     libxext6 \
     && rm -rf /var/lib/apt/lists/*
