@@ -17,13 +17,26 @@
 
   const state = {
     activeView: "words", // 'words' | 'letters' | 'demo'
+    demoSubTab: "words", // 'words' | 'letters'
     mode: "words",
     autoWordMode: true,
     manualRecording: false,
     streaming: false,
     autoAppend: true,
+    polishEnglish: false,
+    selectedDeviceId: "",
     status: null,
     demoSigns: null,
+    demoLetters: null,
+    calCounts: null,
+    calBusy: false,
+    confirmedFlashTimer: null,
+    tuning: {
+      word_conf: 0.68,
+      word_motion: 0.014,
+      letter_conf: 0.72,
+      letter_hold: 0.65,
+    },
     ws: null,
     mediaStream: null,
     inFlight: false,
@@ -40,14 +53,24 @@
     tabWords: document.getElementById("tabWords"),
     tabLetters: document.getElementById("tabLetters"),
     tabDemo: document.getElementById("tabDemo"),
+    badgeDeploy: document.getElementById("badgeDeploy"),
+    packSelect: document.getElementById("packSelect"),
     badgeWords: document.getElementById("badgeWords"),
     badgeLetters: document.getElementById("badgeLetters"),
     btnReload: document.getElementById("btnReload"),
 
+    onboardingStrip: document.getElementById("onboardingStrip"),
+    btnOnboardingDemo: document.getElementById("btnOnboardingDemo"),
+    btnDismissTip: document.getElementById("btnDismissTip"),
+
     liveView: document.getElementById("liveView"),
     demoView: document.getElementById("demoView"),
+    demoSubWords: document.getElementById("demoSubWords"),
+    demoSubLetters: document.getElementById("demoSubLetters"),
     demoFilter: document.getElementById("demoFilter"),
     btnTryWords: document.getElementById("btnTryWords"),
+    demoLetterChartCard: document.getElementById("demoLetterChartCard"),
+    demoLetterChartImg: document.getElementById("demoLetterChartImg"),
     demoGrid: document.getElementById("demoGrid"),
 
     stageBox: document.getElementById("stageBox"),
@@ -58,13 +81,45 @@
     stagePill: document.getElementById("stagePill"),
 
     btnCamera: document.getElementById("btnCamera"),
+    cameraSelect: document.getElementById("cameraSelect"),
     btnUpload: document.getElementById("btnUpload"),
     fileInput: document.getElementById("fileInput"),
     wordSegControls: document.getElementById("wordSegControls"),
     btnAutoMode: document.getElementById("btnAutoMode"),
     btnManualCapture: document.getElementById("btnManualCapture"),
+    btnTune: document.getElementById("btnTune"),
+    btnCalibrate: document.getElementById("btnCalibrate"),
     chkMirror: document.getElementById("chkMirror"),
     chkSkeleton: document.getElementById("chkSkeleton"),
+
+    tunePanel: document.getElementById("tunePanel"),
+    btnTuneReset: document.getElementById("btnTuneReset"),
+    rngWordConf: document.getElementById("rngWordConf"),
+    valWordConf: document.getElementById("valWordConf"),
+    rngWordMotion: document.getElementById("rngWordMotion"),
+    valWordMotion: document.getElementById("valWordMotion"),
+    rngLetterConf: document.getElementById("rngLetterConf"),
+    valLetterConf: document.getElementById("valLetterConf"),
+    rngLetterHold: document.getElementById("rngLetterHold"),
+    valLetterHold: document.getElementById("valLetterHold"),
+
+    calibratePanel: document.getElementById("calibratePanel"),
+    calLabelSelect: document.getElementById("calLabelSelect"),
+    calCustomLabel: document.getElementById("calCustomLabel"),
+    calSignerId: document.getElementById("calSignerId"),
+    calLighting: document.getElementById("calLighting"),
+    calBackground: document.getElementById("calBackground"),
+    calHandedness: document.getElementById("calHandedness"),
+    calTrimRow: document.getElementById("calTrimRow"),
+    rngTrimStart: document.getElementById("rngTrimStart"),
+    valTrimStart: document.getElementById("valTrimStart"),
+    rngTrimEnd: document.getElementById("rngTrimEnd"),
+    valTrimEnd: document.getElementById("valTrimEnd"),
+    calCountBadge: document.getElementById("calCountBadge"),
+    btnCalRecord: document.getElementById("btnCalRecord"),
+    calStatusMsg: document.getElementById("calStatusMsg"),
+    calRecentList: document.getElementById("calRecentList"),
+    btnCalExport: document.getElementById("btnCalExport"),
 
     missingBanner: document.getElementById("missingBanner"),
     missingBannerText: document.getElementById("missingBannerText"),
@@ -78,12 +133,18 @@
     meterFill: document.getElementById("meterFill"),
     meterMarker: document.getElementById("meterMarker"),
 
+    telemetryCol: document.getElementById("telemetryCol"),
+    liveLetterChartCard: document.getElementById("liveLetterChartCard"),
+    vocabCard: document.getElementById("vocabCard"),
+    bottomRow: document.getElementById("bottomRow"),
     lblVocabTitle: document.getElementById("lblVocabTitle"),
     lblVocabMeta: document.getElementById("lblVocabMeta"),
     vocabGrid: document.getElementById("vocabGrid"),
 
     chkAutoAppend: document.getElementById("chkAutoAppend"),
+    chkPolish: document.getElementById("chkPolish"),
     transcriptBox: document.getElementById("transcriptBox"),
+    transcriptRaw: document.getElementById("transcriptRaw"),
     btnSpace: document.getElementById("btnSpace"),
     btnUndo: document.getElementById("btnUndo"),
     btnClear: document.getElementById("btnClear"),
@@ -97,13 +158,11 @@
     el.querySelector(".pill-text").textContent = text;
   }
 
-  async function fetchStatus(endpoint = "/api/status", method = "GET") {
-    const resp = await fetch(endpoint, { method });
-    if (!resp.ok) throw new Error("Failed to reach server status");
-    state.status = await resp.json();
-
+  function applyStatusPayload(data) {
+    state.status = data;
     const w = state.status.words;
     const l = state.status.letters;
+    const dep = state.status.deployment || {};
 
     const wAcc = typeof w.test_top1_acc === "number" ? ` · ${(w.test_top1_acc * 100).toFixed(1)}%` : "";
     const lAcc = typeof l.test_top1_acc === "number" ? ` · ${(l.test_top1_acc * 100).toFixed(1)}%` : "";
@@ -111,7 +170,34 @@
     setPill(els.badgeWords, w.available, w.available ? `Words Ready${wAcc}` : "Words Missing");
     setPill(els.badgeLetters, l.available, l.available ? `Letters Ready${lAcc}` : "Letters Pending");
 
+    const envLabel = (dep.env || "local").toUpperCase();
+    const activePrec = (state.mode === "words" ? w.precision : l.precision) || (dep.prefer_int8 ? "int8" : "fp32");
+    els.badgeDeploy.classList.toggle("int8", String(activePrec).toUpperCase() === "INT8");
+    els.badgeDeploy.querySelector(".pill-text").textContent = `${envLabel} · ${String(activePrec).toUpperCase()}`;
+
+    const wTabCount = els.tabWords.querySelector(".seg-count");
+    if (wTabCount && Array.isArray(w.labels)) {
+      wTabCount.textContent = String(w.labels.length);
+    }
+
+    if (Array.isArray(dep.packs) && dep.packs.length) {
+      els.packSelect.innerHTML = "";
+      for (const pk of dep.packs) {
+        const opt = document.createElement("option");
+        opt.value = pk.id;
+        opt.textContent = pk.name;
+        els.packSelect.appendChild(opt);
+      }
+      els.packSelect.value = dep.active_pack || "default";
+    }
+
     renderModeShell();
+  }
+
+  async function fetchStatus(endpoint = "/api/status", method = "GET") {
+    const resp = await fetch(endpoint, { method });
+    if (!resp.ok) throw new Error("Failed to reach server status");
+    applyStatusPayload(await resp.json());
   }
 
   function renderModeShell() {
@@ -129,6 +215,10 @@
     els.btnUpload.textContent = isWords ? "Upload Video" : "Upload Image";
     els.fileInput.accept = isWords ? "video/*" : "image/*";
     els.wordSegControls.classList.toggle("hidden", !isWords);
+
+    els.liveLetterChartCard.classList.toggle("hidden", isWords);
+    els.bottomRow.classList.toggle("split-bottom", !isWords);
+    (isWords ? els.telemetryCol : els.bottomRow).appendChild(els.vocabCard);
 
     els.lblMeterTitle.textContent = isWords ? "HAND MOTION ENERGY" : "HOLD-TO-CONFIRM";
     els.lblMeterHint.textContent = isWords ? (state.autoWordMode ? "Auto gate" : "Manual") : "Dynamic J & Z active";
@@ -159,6 +249,8 @@
         chip.textContent = lbl;
         els.vocabGrid.appendChild(chip);
       }
+
+      syncCalibrationControls();
     }
 
     updatePredictionUI({
@@ -201,7 +293,7 @@
 
     // Meter bar
     if (state.mode === "words") {
-      const thresh = state.status?.words?.motion_threshold || 0.014;
+      const thresh = state.tuning.word_motion || state.status?.words?.motion_threshold || 0.014;
       const ratio = Math.min(100, (Number(pred.motion_energy || 0) / 0.06) * 100);
       els.meterMarker.style.left = `${Math.min(98, (thresh / 0.06) * 100).toFixed(1)}%`;
       els.meterFill.style.width = `${ratio.toFixed(1)}%`;
@@ -221,14 +313,57 @@
     }
   }
 
+  function polishAslGloss(tokens) {
+    if (!tokens.length) return "";
+    const rawWords = tokens.map((t) => (t.kind === "letter" ? t.text.toUpperCase() : t.text.toLowerCase()));
+    const joined = rawWords.join(" ").trim();
+    const mapRules = [
+      [/^hello(\s+friend)?\s+want\s+water(\s+please)?$/, (_, f, p) => `Hello${f ? " friend" : ""}, I want water${p ? ", please" : ""}.`],
+      [/^want\s+([a-z]+)(\s+please)?$/, (_, obj, p) => `I want ${obj}${p ? ", please" : ""}.`],
+      [/^more\s+([a-z]+)(\s+please)?$/, (_, obj, p) => `I would like more ${obj}${p ? ", please" : ""}.`],
+      [/^thank you\s+help$/, () => "Thank you for your help."],
+      [/^help(\s+please)?$/, (_, p) => `Could you help me${p ? ", please" : ""}?`],
+      [/^stop(\s+please)?$/, (_, p) => `${p ? "Please stop" : "Stop"}.`],
+      [/^please\s+([a-z\s]+)$/, (_, rest) => `Please ${rest.trim()}.`],
+    ];
+    for (const [pat, fmt] of mapRules) {
+      const m = joined.match(pat);
+      if (m) return fmt(...m);
+    }
+    const clean = joined
+      .replace(/\bwant\b/g, "I want")
+      .replace(/\blove\b/g, "I love")
+      .replace(/\s+/g, " ")
+      .trim();
+    const titled = clean.charAt(0).toUpperCase() + clean.slice(1);
+    return /[.!?]$/.test(titled) ? titled : `${titled}.`;
+  }
+
+  function getActiveTranscriptText() {
+    const rawText = state.tokens.map((t) => t.text).join(" ").trim();
+    if (!rawText) return "";
+    return state.polishEnglish ? polishAslGloss(state.tokens) : rawText;
+  }
+
   function renderTranscript() {
-    const text = state.tokens.map((t) => t.text).join(" ");
-    if (!text) {
+    const rawText = state.tokens.map((t) => t.text).join(" ");
+    if (!rawText) {
       els.transcriptBox.textContent = "Confirmed words and fingerspelled letters appear here…";
       els.transcriptBox.classList.add("empty");
-    } else {
-      els.transcriptBox.textContent = state.pendingSpace ? `${text} ·` : text;
+      els.transcriptRaw.classList.add("hidden");
+      els.transcriptRaw.textContent = "";
+      return;
+    }
+    if (state.polishEnglish) {
+      els.transcriptBox.textContent = polishAslGloss(state.tokens);
       els.transcriptBox.classList.remove("empty");
+      els.transcriptRaw.textContent = `Raw gloss: ${rawText}`;
+      els.transcriptRaw.classList.remove("hidden");
+    } else {
+      els.transcriptBox.textContent = state.pendingSpace ? `${rawText} ·` : rawText;
+      els.transcriptBox.classList.remove("empty");
+      els.transcriptRaw.classList.add("hidden");
+      els.transcriptRaw.textContent = "";
     }
   }
 
@@ -340,19 +475,51 @@
     }
   }
 
-  async function startCamera() {
+  async function refreshCameraList() {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter((d) => d.kind === "videoinput");
+      if (cams.length <= 1) {
+        els.cameraSelect.classList.add("hidden");
+        return;
+      }
+      els.cameraSelect.innerHTML = "";
+      cams.forEach((cam, idx) => {
+        const opt = document.createElement("option");
+        opt.value = cam.deviceId;
+        opt.textContent = cam.label || `Camera ${idx + 1}`;
+        els.cameraSelect.appendChild(opt);
+      });
+      if (state.selectedDeviceId) els.cameraSelect.value = state.selectedDeviceId;
+      els.cameraSelect.classList.remove("hidden");
+    } catch (_) {}
+  }
+
+  function triggerConfirmedFlash() {
+    els.stageBox.classList.add("confirmed");
+    if (state.confirmedFlashTimer) clearTimeout(state.confirmedFlashTimer);
+    state.confirmedFlashTimer = setTimeout(() => els.stageBox.classList.remove("confirmed"), 650);
+  }
+
+  async function startCamera(deviceId = state.selectedDeviceId) {
     if (!navigator.mediaDevices?.getUserMedia) {
       els.lblStatus.textContent = "Camera API requires localhost or HTTPS in this browser.";
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 960 }, height: { ideal: 720 }, facingMode: "user" },
-        audio: false,
-      });
+      const videoConstraints = deviceId
+        ? { deviceId: { exact: deviceId }, width: { ideal: 960 }, height: { ideal: 720 } }
+        : { width: { ideal: 960 }, height: { ideal: 720 }, facingMode: "user" };
+      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+      const activeTrack = stream.getVideoTracks()[0];
+      if (activeTrack?.getSettings()?.deviceId) {
+        state.selectedDeviceId = activeTrack.getSettings().deviceId;
+      }
       state.mediaStream = stream;
       els.liveVideo.srcObject = stream;
       await els.liveVideo.play();
+      await refreshCameraList();
       if (els.liveVideo.videoWidth > 0 && els.liveVideo.videoHeight > 0) {
         els.stageBox.style.aspectRatio = `${els.liveVideo.videoWidth} / ${els.liveVideo.videoHeight}`;
       }
@@ -381,6 +548,7 @@
           mode: state.mode,
           auto_word_mode: state.autoWordMode,
           return_overlay: els.chkSkeleton.checked,
+          ...state.tuning,
         });
         els.stagePill.textContent = "LIVE";
         state.rafId = requestAnimationFrame(pumpFrames);
@@ -398,11 +566,14 @@
           if (data.segmenter) {
             state.autoWordMode = Boolean(data.segmenter.auto_mode);
             state.manualRecording = Boolean(data.segmenter.manual_recording);
+            const isSigning = Boolean(data.segmenter.manual_recording || data.segmenter.word_state === "SIGNING");
+            els.stageBox.classList.toggle("signing", isSigning);
             syncSegmenterButtons();
           }
 
           updatePredictionUI(data.pred);
           if (data.pred?.confirmed_token) {
+            triggerConfirmedFlash();
             appendToken(data.pred.confirmed_token, data.pred.confirmed_kind);
           }
           drawOverlay(data.overlay);
@@ -478,6 +649,7 @@
     els.liveVideo.srcObject = null;
     els.liveVideo.classList.add("hidden");
     els.overlayCanvas.classList.add("hidden");
+    els.stageBox.classList.remove("signing", "confirmed");
     els.stageBox.style.aspectRatio = "4 / 3";
     clearStageOverlay();
     if (els.previewImg.classList.contains("hidden")) {
@@ -553,46 +725,109 @@
   }
 
   function renderDemoGrid(filterText = "") {
-    if (!state.demoSigns) return;
-    const q = filterText.trim().toLowerCase();
-    const items = q
-      ? state.demoSigns.filter(
-          (item) => item.word.toLowerCase().includes(q) || item.how_to.toLowerCase().includes(q)
-        )
-      : state.demoSigns;
+    const isWords = state.demoSubTab === "words";
+    els.demoSubWords.classList.toggle("active", isWords);
+    els.demoSubLetters.classList.toggle("active", !isWords);
+    els.demoSubWords.setAttribute("aria-selected", String(isWords));
+    els.demoSubLetters.setAttribute("aria-selected", String(!isWords));
+    els.btnTryWords.textContent = isWords ? "Try Live in Words" : "Try Live in Letters";
+    els.demoLetterChartCard.classList.toggle("hidden", isWords || !els.demoLetterChartImg.getAttribute("src"));
 
     els.demoGrid.innerHTML = "";
+    const q = filterText.trim().toLowerCase();
+
+    if (isWords) {
+      if (!state.demoSigns) return;
+      const items = q
+        ? state.demoSigns.filter(
+            (item) => item.word.toLowerCase().includes(q) || item.how_to.toLowerCase().includes(q)
+          )
+        : state.demoSigns;
+
+      for (const item of items) {
+        const card = document.createElement("article");
+        card.className = "demo-card";
+
+        const media = document.createElement("div");
+        media.className = "demo-media";
+        if (item.image_url) {
+          const img = document.createElement("img");
+          img.src = item.image_url;
+          img.alt = `ASL sign for ${item.word}`;
+          img.loading = "lazy";
+          media.appendChild(img);
+        }
+
+        const body = document.createElement("div");
+        body.className = "demo-body";
+
+        const top = document.createElement("div");
+        top.className = "demo-card-top";
+
+        const wordEl = document.createElement("div");
+        wordEl.className = "demo-word";
+        wordEl.textContent = item.word;
+
+        const tryBtn = document.createElement("button");
+        tryBtn.type = "button";
+        tryBtn.className = "btn btn-outline demo-try-btn";
+        tryBtn.textContent = "Practice";
+        tryBtn.addEventListener("click", () => switchTab("words", item.word));
+
+        top.appendChild(wordEl);
+        top.appendChild(tryBtn);
+
+        const desc = document.createElement("p");
+        desc.className = "demo-howto";
+        desc.textContent = item.how_to;
+
+        body.appendChild(top);
+        body.appendChild(desc);
+        card.appendChild(media);
+        card.appendChild(body);
+        els.demoGrid.appendChild(card);
+      }
+      return;
+    }
+
+    if (!state.demoLetters) return;
+    const items = q
+      ? state.demoLetters.filter(
+          (item) => item.letter.toLowerCase().includes(q) || item.how_to.toLowerCase().includes(q)
+        )
+      : state.demoLetters;
+
     for (const item of items) {
       const card = document.createElement("article");
       card.className = "demo-card";
 
-      const media = document.createElement("div");
-      media.className = "demo-media";
-      if (item.image_url) {
-        const img = document.createElement("img");
-        img.src = item.image_url;
-        img.alt = `ASL sign for ${item.word}`;
-        img.loading = "lazy";
-        media.appendChild(img);
+      const badge = document.createElement("div");
+      badge.className = "letter-demo-badge";
+      const chEl = document.createElement("div");
+      chEl.className = "letter-demo-char";
+      chEl.textContent = item.letter;
+      badge.appendChild(chEl);
+      if (item.dynamic) {
+        const tag = document.createElement("span");
+        tag.className = "letter-motion-tag";
+        tag.textContent = "Motion";
+        badge.appendChild(tag);
       }
 
       const body = document.createElement("div");
       body.className = "demo-body";
-
       const top = document.createElement("div");
       top.className = "demo-card-top";
-
-      const wordEl = document.createElement("div");
-      wordEl.className = "demo-word";
-      wordEl.textContent = item.word;
+      const lbl = document.createElement("div");
+      lbl.className = "demo-word";
+      lbl.textContent = `Letter ${item.letter}`;
 
       const tryBtn = document.createElement("button");
       tryBtn.type = "button";
       tryBtn.className = "btn btn-outline demo-try-btn";
       tryBtn.textContent = "Practice";
-      tryBtn.addEventListener("click", () => switchTab("words", item.word));
-
-      top.appendChild(wordEl);
+      tryBtn.addEventListener("click", () => switchTab("letters", item.letter));
+      top.appendChild(lbl);
       top.appendChild(tryBtn);
 
       const desc = document.createElement("p");
@@ -601,22 +836,221 @@
 
       body.appendChild(top);
       body.appendChild(desc);
-      card.appendChild(media);
+      card.appendChild(badge);
       card.appendChild(body);
       els.demoGrid.appendChild(card);
     }
   }
 
   async function ensureDemoSignsLoaded() {
-    if (state.demoSigns) return;
+    if (state.demoSigns && state.demoLetters) return;
     const resp = await fetch("/api/demo-signs");
     if (!resp.ok) throw new Error("Failed to load demo signs");
     const data = await resp.json();
     state.demoSigns = data.signs || [];
+    state.demoLetters = data.letters || [];
+    if (data.letter_chart_url) {
+      els.demoLetterChartImg.src = data.letter_chart_url;
+    } else {
+      els.demoLetterChartImg.removeAttribute("src");
+    }
     renderDemoGrid(els.demoFilter.value);
   }
 
-  function switchTab(target, practiceWord = "") {
+  function syncCalibrationControls() {
+    if (!state.status) return;
+    const labels = state.mode === "words" ? state.status.words.labels : state.status.letters.labels;
+    const prev = els.calLabelSelect.value;
+    els.calLabelSelect.innerHTML = "";
+    for (const lbl of labels) {
+      const opt = document.createElement("option");
+      opt.value = lbl;
+      opt.textContent = lbl.toUpperCase();
+      els.calLabelSelect.appendChild(opt);
+    }
+    if (labels.includes(prev)) els.calLabelSelect.value = prev;
+    els.btnCalRecord.textContent = state.mode === "words" ? "Record 2s Clip" : "Capture Snapshot";
+    els.calTrimRow.classList.toggle("hidden", state.mode !== "words");
+    updateCalCountBadge();
+  }
+
+  function getActiveCalLabel() {
+    const custom = (els.calCustomLabel.value || "").trim();
+    return custom || els.calLabelSelect.value;
+  }
+
+  function updateCalCountBadge() {
+    const lbl = getActiveCalLabel();
+    const total = Number(state.calCounts?.annotated_total || 0);
+    if (!state.calCounts || !lbl) {
+      els.calCountBadge.textContent = `${total} total`;
+      return;
+    }
+    const bucket = state.mode === "words" ? state.calCounts.words : state.calCounts.letters;
+    const norm = state.mode === "words" ? lbl.toLowerCase() : lbl.toUpperCase();
+    const cnt = Number(bucket?.[norm] || 0);
+    els.calCountBadge.textContent = `${cnt} label · ${total} total`;
+  }
+
+  function renderRecentAnnotations(rows) {
+    els.calRecentList.innerHTML = "";
+    if (!Array.isArray(rows) || !rows.length) {
+      return;
+    }
+    for (const row of rows.slice(0, 8)) {
+      const item = document.createElement("div");
+      item.className = "cal-recent-item";
+      const main = document.createElement("span");
+      main.className = "cal-recent-main";
+      main.innerHTML = `<strong>${row.label}</strong> (${row.mode || "clip"}) · ${row.signer_id} · ${row.lighting}/${row.background}`;
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "cal-del-btn";
+      delBtn.textContent = "Delete";
+      delBtn.addEventListener("click", async () => {
+        delBtn.disabled = true;
+        try {
+          const resp = await fetch(`/api/calibration/sample/${encodeURIComponent(row.sample_id)}`, { method: "DELETE" });
+          const data = await resp.json();
+          if (resp.ok) {
+            state.calCounts = data.counts;
+            updateCalCountBadge();
+            renderRecentAnnotations(data.annotations || []);
+            els.calStatusMsg.textContent = `Deleted sample ${row.label} (${row.sample_id}).`;
+          }
+        } catch (_) {}
+      });
+      item.appendChild(main);
+      item.appendChild(delBtn);
+      els.calRecentList.appendChild(item);
+    }
+  }
+
+  async function fetchCalibrationCounts() {
+    try {
+      const resp = await fetch("/api/calibration/annotations?limit=25");
+      if (!resp.ok) return;
+      const data = await resp.json();
+      state.calCounts = data.counts;
+      updateCalCountBadge();
+      renderRecentAnnotations(data.annotations || []);
+    } catch (_) {}
+  }
+
+  function grabUnmirroredFrameBlob() {
+    return new Promise((resolve) => {
+      const v = els.liveVideo;
+      if (!state.streaming || v.readyState < 2 || v.videoWidth <= 0) {
+        resolve(null);
+        return;
+      }
+      const w = 640;
+      const h = Math.max(240, Math.round((v.videoHeight / v.videoWidth) * w));
+      if (state.captureCanvas.width !== w || state.captureCanvas.height !== h) {
+        state.captureCanvas.width = w;
+        state.captureCanvas.height = h;
+      }
+      const ctx = state.captureCanvas.getContext("2d");
+      ctx.drawImage(v, 0, 0, w, h);
+      state.captureCanvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.90);
+    });
+  }
+
+  async function runBrowserCalibrationCapture() {
+    if (state.calBusy) return;
+    if (!state.streaming) {
+      els.calStatusMsg.textContent = "Start your webcam first before recording calibration samples.";
+      return;
+    }
+    const customText = (els.calCustomLabel.value || "").trim();
+    const label = customText || els.calLabelSelect.value;
+    const allowCustom = Boolean(customText);
+    const signerId = (els.calSignerId.value || "anonymous").trim() || "anonymous";
+    const lighting = els.calLighting.value || "normal";
+    const background = els.calBackground.value || "plain";
+    const handedness = els.calHandedness.value || "right";
+    if (!label) return;
+    try { localStorage.setItem("asl_signer_id", signerId); } catch (_) {}
+    state.calBusy = true;
+    els.btnCalRecord.disabled = true;
+
+    try {
+      if (state.mode === "letters") {
+        els.calStatusMsg.textContent = `Hold "${label}" steady… capturing snapshot.`;
+        const blob = await grabUnmirroredFrameBlob();
+        if (!blob) throw new Error("Failed to grab webcam frame.");
+        const form = new FormData();
+        form.append("label", label);
+        form.append("file", blob, "snapshot.jpg");
+        form.append("signer_id", signerId);
+        form.append("lighting", lighting);
+        form.append("background", background);
+        form.append("handedness", handedness);
+        form.append("allow_custom", String(allowCustom));
+        const resp = await fetch("/api/calibration/letter", { method: "POST", body: form });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || "Save failed");
+        state.calCounts = data.counts;
+        updateCalCountBadge();
+        renderRecentAnnotations(data.annotations || []);
+        els.calStatusMsg.textContent = `Saved letter ${data.label} (${data.path}) by ${signerId}.`;
+      } else {
+        for (const sec of ["1.0s", "0.5s"]) {
+          els.calStatusMsg.textContent = `Get ready for "${label.toUpperCase()}" (${sec})…`;
+          await new Promise((r) => setTimeout(r, 450));
+        }
+        els.calStatusMsg.textContent = `Recording "${label.toUpperCase()}" (2s)…`;
+        const blobs = [];
+        for (let i = 0; i < 28; i++) {
+          const b = await grabUnmirroredFrameBlob();
+          if (b) blobs.push(b);
+          await new Promise((r) => setTimeout(r, 67));
+        }
+        const trimStart = Number(els.rngTrimStart.value || 0) / 100.0;
+        const trimEnd = Number(els.rngTrimEnd.value || 100) / 100.0;
+        const form = new FormData();
+        form.append("label", label);
+        form.append("fps", "15");
+        form.append("signer_id", signerId);
+        form.append("lighting", lighting);
+        form.append("background", background);
+        form.append("handedness", handedness);
+        form.append("trim_start_pct", String(trimStart));
+        form.append("trim_end_pct", String(trimEnd));
+        form.append("allow_custom", String(allowCustom));
+        blobs.forEach((b, i) => form.append("files", b, `f_${i}.jpg`));
+        const resp = await fetch("/api/calibration/word", { method: "POST", body: form });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || "Save failed");
+        state.calCounts = data.counts;
+        updateCalCountBadge();
+        renderRecentAnnotations(data.annotations || []);
+        els.calStatusMsg.textContent = `Saved ${data.frames_saved}f clip for "${data.label.toUpperCase()}" by ${signerId}.`;
+      }
+    } catch (err) {
+      els.calStatusMsg.textContent = err.message || "Calibration failed.";
+    } finally {
+      state.calBusy = false;
+      els.btnCalRecord.disabled = false;
+    }
+  }
+
+  function applyTuningControls(send = true) {
+    state.tuning.word_conf = Number(els.rngWordConf.value);
+    state.tuning.word_motion = Number(els.rngWordMotion.value);
+    state.tuning.letter_conf = Number(els.rngLetterConf.value);
+    state.tuning.letter_hold = Number(els.rngLetterHold.value);
+    els.valWordConf.textContent = `${Math.round(state.tuning.word_conf * 100)}%`;
+    els.valWordMotion.textContent = state.tuning.word_motion.toFixed(3);
+    els.valLetterConf.textContent = `${Math.round(state.tuning.letter_conf * 100)}%`;
+    els.valLetterHold.textContent = `${state.tuning.letter_hold.toFixed(2)}s`;
+    if (state.mode === "words") {
+      els.meterMarker.style.left = `${Math.min(98, (state.tuning.word_motion / 0.06) * 100).toFixed(1)}%`;
+    }
+    if (send) sendWsControl({ type: "config", ...state.tuning });
+  }
+
+  function switchTab(target, practiceLabel = "") {
     if (target === "demo") {
       if (state.streaming) stopCamera();
       state.activeView = "demo";
@@ -632,15 +1066,15 @@
     state.mode = target;
     state.manualRecording = false;
     if (prevMode !== target) {
-      sendWsControl({ type: "config", mode: target, return_overlay: els.chkSkeleton.checked });
+      sendWsControl({ type: "config", mode: target, return_overlay: els.chkSkeleton.checked, ...state.tuning });
     }
     renderModeShell();
     syncSegmenterButtons();
 
-    if (practiceWord && target === "words") {
-      els.lblStatus.textContent = `Ready to practice "${practiceWord.toUpperCase()}" · Start camera or upload a clip`;
+    if (practiceLabel) {
+      els.lblStatus.textContent = `Ready to practice "${practiceLabel.toUpperCase()}" · Start camera or upload a sample`;
       for (const chip of els.vocabGrid.children) {
-        chip.classList.toggle("preview", chip.dataset.label === practiceWord.toLowerCase());
+        chip.classList.toggle("preview", chip.dataset.label === practiceLabel.toLowerCase());
       }
     }
   }
@@ -653,8 +1087,85 @@
   els.tabWords.addEventListener("click", () => switchTab("words"));
   els.tabLetters.addEventListener("click", () => switchTab("letters"));
   els.tabDemo.addEventListener("click", () => switchTab("demo"));
-  els.btnTryWords.addEventListener("click", () => switchTab("words"));
+  els.demoSubWords.addEventListener("click", () => {
+    state.demoSubTab = "words";
+    renderDemoGrid(els.demoFilter.value);
+  });
+  els.demoSubLetters.addEventListener("click", () => {
+    state.demoSubTab = "letters";
+    renderDemoGrid(els.demoFilter.value);
+  });
+  els.btnTryWords.addEventListener("click", () => switchTab(state.demoSubTab === "letters" ? "letters" : "words"));
   els.demoFilter.addEventListener("input", () => renderDemoGrid(els.demoFilter.value));
+
+  els.btnTune.addEventListener("click", () => {
+    els.tunePanel.classList.toggle("hidden");
+  });
+  els.btnCalibrate.addEventListener("click", () => {
+    const nowOpen = els.calibratePanel.classList.toggle("hidden") === false;
+    if (nowOpen) fetchCalibrationCounts();
+  });
+  els.calLabelSelect.addEventListener("change", updateCalCountBadge);
+  els.calCustomLabel.addEventListener("input", updateCalCountBadge);
+  els.rngTrimStart.addEventListener("input", () => {
+    if (Number(els.rngTrimStart.value) >= Number(els.rngTrimEnd.value) - 10) {
+      els.rngTrimStart.value = String(Math.max(0, Number(els.rngTrimEnd.value) - 15));
+    }
+    els.valTrimStart.textContent = `${els.rngTrimStart.value}%`;
+  });
+  els.rngTrimEnd.addEventListener("input", () => {
+    if (Number(els.rngTrimEnd.value) <= Number(els.rngTrimStart.value) + 10) {
+      els.rngTrimEnd.value = String(Math.min(100, Number(els.rngTrimStart.value) + 15));
+    }
+    els.valTrimEnd.textContent = `${els.rngTrimEnd.value}%`;
+  });
+  els.btnCalRecord.addEventListener("click", runBrowserCalibrationCapture);
+
+  els.btnOnboardingDemo.addEventListener("click", () => switchTab("demo"));
+  els.btnDismissTip.addEventListener("click", () => {
+    els.onboardingStrip.classList.add("hidden");
+    try { localStorage.setItem("asl_hide_onboarding", "1"); } catch (_) {}
+  });
+  els.packSelect.addEventListener("change", async () => {
+    try {
+      const resp = await fetch("/api/packs/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pack_id: els.packSelect.value }),
+      });
+      if (resp.ok) applyStatusPayload(await resp.json());
+    } catch (_) {}
+  });
+  els.badgeDeploy.addEventListener("click", async () => {
+    const curInt8 = Boolean(state.status?.deployment?.prefer_int8);
+    try {
+      const resp = await fetch("/api/precision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prefer_int8: !curInt8 }),
+      });
+      if (resp.ok) applyStatusPayload(await resp.json());
+    } catch (_) {}
+  });
+
+  [els.rngWordConf, els.rngWordMotion, els.rngLetterConf, els.rngLetterHold].forEach((rng) => {
+    rng.addEventListener("input", () => applyTuningControls(true));
+  });
+  els.btnTuneReset.addEventListener("click", () => {
+    els.rngWordConf.value = "0.68";
+    els.rngWordMotion.value = "0.014";
+    els.rngLetterConf.value = "0.72";
+    els.rngLetterHold.value = "0.65";
+    applyTuningControls(true);
+  });
+
+  els.cameraSelect.addEventListener("change", () => {
+    state.selectedDeviceId = els.cameraSelect.value;
+    if (state.streaming) {
+      stopCamera();
+      startCamera(state.selectedDeviceId);
+    }
+  });
 
   els.btnReload.addEventListener("click", async () => {
     els.btnReload.disabled = true;
@@ -714,6 +1225,11 @@
     state.autoAppend = els.chkAutoAppend.checked;
   });
 
+  els.chkPolish.addEventListener("change", () => {
+    state.polishEnglish = els.chkPolish.checked;
+    renderTranscript();
+  });
+
   els.btnSpace.addEventListener("click", () => {
     state.joinLetters = false;
     state.pendingSpace = state.tokens.length > 0;
@@ -742,7 +1258,7 @@
   });
 
   els.btnCopy.addEventListener("click", async () => {
-    const text = state.tokens.map((t) => t.text).join(" ").trim();
+    const text = getActiveTranscriptText();
     if (!text) return;
     await navigator.clipboard?.writeText(text);
     const orig = els.btnCopy.textContent;
@@ -751,13 +1267,21 @@
   });
 
   els.btnSpeak.addEventListener("click", () => {
-    const text = state.tokens.map((t) => t.text).join(" ").trim();
+    const text = getActiveTranscriptText();
     if (!text || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
   });
 
   // Init
+  try {
+    if (localStorage.getItem("asl_hide_onboarding") === "1") {
+      els.onboardingStrip.classList.add("hidden");
+    }
+    const savedSigner = localStorage.getItem("asl_signer_id");
+    if (savedSigner) els.calSignerId.value = savedSigner;
+  } catch (_) {}
+  applyTuningControls(false);
   fetchStatus().catch((err) => {
     els.lblStatus.textContent = err.message;
   });

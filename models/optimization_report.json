@@ -1,0 +1,37 @@
+{
+  "onnxruntime_version": "1.32.0",
+  "benchmarks": [
+    {
+      "file": "asl_letters_hybrid.onnx",
+      "precision": "fp32",
+      "size_mb": 17.931,
+      "mean_ms": 4.393,
+      "p95_ms": 5.15,
+      "runs": 30
+    },
+    {
+      "file": "asl_letters_hybrid_int8.onnx",
+      "precision": "int8",
+      "size_mb": 4.888,
+      "mean_ms": 86.706,
+      "p95_ms": 96.487,
+      "runs": 30
+    },
+    {
+      "file": "asl_words_conformer.onnx",
+      "precision": "fp32",
+      "size_mb": 9.185,
+      "mean_ms": 3.316,
+      "p95_ms": 4.189,
+      "runs": 30
+    },
+    {
+      "file": "asl_words_conformer_int8.onnx",
+      "precision": "int8",
+      "size_mb": 5.65,
+      "mean_ms": 4.331,
+      "p95_ms": 5.901,
+      "runs": 30
+    }
+  ]
+}

@@ -30,6 +30,12 @@
       </div>
 
       <div class="status-cluster">
+        <button id="badgeDeploy" class="deploy-pill" type="button" title="Toggle FP32 / INT8 ONNX precision when quantized weights are present">
+          <span class="pill-text">Local · FP32</span>
+        </button>
+        <select id="packSelect" class="pack-select" aria-label="Model Domain Pack" title="Switch vocabulary or sign-language pack">
+          <option value="default">General ASL (Default)</option>
+        </select>
         <span id="badgeWords" class="model-pill pending">
           <span class="dot"></span>
           <span class="pill-text">Words: Checking…</span>
@@ -38,7 +44,7 @@
           <span class="dot"></span>
           <span class="pill-text">Letters: Pending</span>
         </span>
-        <button id="btnReload" class="btn btn-ghost btn-sm" type="button" title="Check models/ folder for newly added weights">
+        <button id="btnReload" class="btn btn-ghost btn-sm" type="button" title="Check models/ folder for newly added weights or packs">
           Reload Models
         </button>
       </div>
@@ -46,6 +52,12 @@
   </header>
 
   <main id="liveView" class="workspace">
+    <div id="onboardingStrip" class="onboarding-strip">
+      <div class="onboarding-text">
+        <strong>Quick Start:</strong> Sign in <strong>Auto Motion</strong> mode (or toggle <em>Manual</em>), browse <button id="btnOnboardingDemo" class="link-btn" type="button">Demo Signs</button> for guidance, or open <strong>Dataset &amp; Annotate</strong> below to record labeled team clips.
+      </div>
+      <button id="btnDismissTip" class="btn btn-ghost btn-sm" type="button">Dismiss</button>
+    </div>
     <!-- Left Column: Stage & Controls -->
     <section class="card stage-card">
       <div id="stageBox" class="stage-viewport">
@@ -70,6 +82,7 @@
       <div class="controls-bar">
         <div class="controls-left">
           <button id="btnCamera" class="btn btn-primary" type="button">Start Camera</button>
+          <select id="cameraSelect" class="cam-select hidden" aria-label="Select Webcam"></select>
           <button id="btnUpload" class="btn btn-outline" type="button">Upload Video</button>
           <input id="fileInput" type="file" accept="video/*" class="hidden" />
 
@@ -84,6 +97,8 @@
         </div>
 
         <div class="controls-right">
+          <button id="btnTune" class="btn btn-ghost btn-sm" type="button">Tune</button>
+          <button id="btnCalibrate" class="btn btn-ghost btn-sm" type="button">Dataset &amp; Annotate</button>
           <label class="toggle-chip">
             <input id="chkMirror" type="checkbox" checked />
             <span>Mirror</span>
@@ -94,10 +109,92 @@
           </label>
         </div>
       </div>
+
+      <div id="tunePanel" class="drawer-panel hidden">
+        <div class="drawer-head">
+          <span class="eyebrow">LIVE DETECTION THRESHOLDS</span>
+          <button id="btnTuneReset" class="btn btn-ghost btn-sm" type="button">Reset Defaults</button>
+        </div>
+        <div class="sliders-grid">
+          <label class="slider-item">
+            <span class="slider-top"><span>Word Confidence</span><strong id="valWordConf">68%</strong></span>
+            <input id="rngWordConf" type="range" min="0.40" max="0.90" step="0.02" value="0.68" />
+          </label>
+          <label class="slider-item">
+            <span class="slider-top"><span>Word Motion Gate</span><strong id="valWordMotion">0.014</strong></span>
+            <input id="rngWordMotion" type="range" min="0.005" max="0.035" step="0.001" value="0.014" />
+          </label>
+          <label class="slider-item">
+            <span class="slider-top"><span>Letter Confidence</span><strong id="valLetterConf">72%</strong></span>
+            <input id="rngLetterConf" type="range" min="0.45" max="0.95" step="0.02" value="0.72" />
+          </label>
+          <label class="slider-item">
+            <span class="slider-top"><span>Letter Hold Time</span><strong id="valLetterHold">0.65s</strong></span>
+            <input id="rngLetterHold" type="range" min="0.25" max="1.50" step="0.05" value="0.65" />
+          </label>
+        </div>
+      </div>
+
+      <div id="calibratePanel" class="drawer-panel hidden">
+        <div class="drawer-head">
+          <span class="eyebrow">TEAM DATASET &amp; ANNOTATION STUDIO</span>
+          <a id="btnCalExport" class="btn btn-ghost btn-sm" href="/api/calibration/export">Download ZIP + CSV</a>
+        </div>
+        <div class="cal-controls">
+          <select id="calLabelSelect" class="cal-select" aria-label="Annotation Target Label"></select>
+          <input id="calCustomLabel" class="cal-input" type="text" placeholder="Or type new sign label…" aria-label="Custom Sign Label" />
+          <span id="calCountBadge" class="latency-pill">0 saved</span>
+          <button id="btnCalRecord" class="btn btn-emerald btn-sm" type="button">Record 2s Clip</button>
+        </div>
+        <div class="cal-meta-grid">
+          <label class="cal-field">
+            <span>Signer ID</span>
+            <input id="calSignerId" class="cal-input compact" type="text" value="signer_01" placeholder="e.g. thaw_01" />
+          </label>
+          <label class="cal-field">
+            <span>Lighting</span>
+            <select id="calLighting" class="cal-select compact">
+              <option value="normal">Normal</option>
+              <option value="bright">Bright</option>
+              <option value="low_light">Low Light</option>
+              <option value="backlit">Backlit</option>
+            </select>
+          </label>
+          <label class="cal-field">
+            <span>Background</span>
+            <select id="calBackground" class="cal-select compact">
+              <option value="plain">Plain</option>
+              <option value="cluttered">Cluttered</option>
+            </select>
+          </label>
+          <label class="cal-field">
+            <span>Handedness</span>
+            <select id="calHandedness" class="cal-select compact">
+              <option value="right">Right</option>
+              <option value="left">Left</option>
+              <option value="both">Both Hands</option>
+            </select>
+          </label>
+        </div>
+        <div id="calTrimRow" class="cal-trim-row">
+          <label class="slider-item">
+            <span class="slider-top"><span>Clip Start Trim</span><strong id="valTrimStart">0%</strong></span>
+            <input id="rngTrimStart" type="range" min="0" max="40" step="5" value="0" />
+          </label>
+          <label class="slider-item">
+            <span class="slider-top"><span>Clip End Trim</span><strong id="valTrimEnd">100%</strong></span>
+            <input id="rngTrimEnd" type="range" min="60" max="100" step="5" value="100" />
+          </label>
+        </div>
+        <div class="cal-status-line">
+          <span id="calStatusMsg" class="meter-hint">Start camera, annotate signer/environment metadata, and capture samples.</span>
+        </div>
+        <div id="calRecentList" class="cal-recent-list"></div>
+      </div>
     </section>
 
-    <!-- Right Column: Telemetry & Vocabulary -->
-    <aside class="telemetry-col">
+    <!-- Right Column: Telemetry & Vocabulary / Chart -->
+    <aside id="telemetryCol" class="telemetry-col">
       <div id="missingBanner" class="notice-banner hidden">
         <div class="notice-title">Model weights not added yet</div>
         <div id="missingBannerText" class="notice-body">
@@ -132,7 +229,17 @@
         </div>
       </section>
 
-      <section class="card vocab-card">
+      <section id="liveLetterChartCard" class="card live-chart-card hidden">
+        <div class="card-head">
+          <span class="eyebrow">ASL ALPHABET CHART</span>
+          <span class="vocab-meta">A–Z Reference</span>
+        </div>
+        <div class="live-chart-media">
+          <img id="liveLetterChartImg" src="/demo_images/asl_alphabet_chart.jpg" alt="American Sign Language (ASL) Alphabet A to Z reference chart" loading="lazy" />
+        </div>
+      </section>
+
+      <section id="vocabCard" class="card vocab-card">
         <div class="card-head">
           <span id="lblVocabTitle" class="eyebrow">15 TRAINED WORDS</span>
           <span id="lblVocabMeta" class="vocab-meta"></span>
@@ -141,30 +248,37 @@
       </section>
     </aside>
 
-    <!-- Bottom Full-Width Transcript -->
-    <section class="card transcript-card">
-      <div class="transcript-head">
-        <div class="transcript-title-group">
-          <span class="eyebrow">TRANSCRIPT</span>
-          <label class="toggle-chip compact">
-            <input id="chkAutoAppend" type="checkbox" checked />
-            <span>Auto-append</span>
-          </label>
+    <!-- Bottom Row: Transcript (+ 26 Letters card side-by-side in Letters mode) -->
+    <div id="bottomRow" class="workspace-bottom">
+      <section class="card transcript-card">
+        <div class="transcript-head">
+          <div class="transcript-title-group">
+            <span class="eyebrow">TRANSCRIPT</span>
+            <label class="toggle-chip compact">
+              <input id="chkAutoAppend" type="checkbox" checked />
+              <span>Auto-append</span>
+            </label>
+            <label class="toggle-chip compact">
+              <input id="chkPolish" type="checkbox" />
+              <span>Polish English</span>
+            </label>
+          </div>
+
+          <div class="transcript-actions">
+            <button id="btnSpace" class="btn btn-ghost btn-sm" type="button">Space</button>
+            <button id="btnUndo" class="btn btn-ghost btn-sm" type="button">Undo</button>
+            <button id="btnClear" class="btn btn-ghost btn-sm" type="button">Clear</button>
+            <button id="btnCopy" class="btn btn-ghost btn-sm" type="button">Copy</button>
+            <button id="btnSpeak" class="btn btn-outline btn-sm" type="button">Speak</button>
+          </div>
         </div>
 
-        <div class="transcript-actions">
-          <button id="btnSpace" class="btn btn-ghost btn-sm" type="button">Space</button>
-          <button id="btnUndo" class="btn btn-ghost btn-sm" type="button">Undo</button>
-          <button id="btnClear" class="btn btn-ghost btn-sm" type="button">Clear</button>
-          <button id="btnCopy" class="btn btn-ghost btn-sm" type="button">Copy</button>
-          <button id="btnSpeak" class="btn btn-outline btn-sm" type="button">Speak</button>
+        <div id="transcriptBox" class="transcript-output empty">
+          Confirmed words and fingerspelled letters appear here…
         </div>
-      </div>
-
-      <div id="transcriptBox" class="transcript-output empty">
-        Confirmed words and fingerspelled letters appear here…
-      </div>
-    </section>
+        <div id="transcriptRaw" class="transcript-raw hidden"></div>
+      </section>
+    </div>
   </main>
 
   <section id="demoView" class="demo-workspace hidden" aria-label="Demo Signs Guide">
@@ -172,12 +286,26 @@
       <div>
         <h1 class="demo-title">Demo Signs Guide</h1>
         <p class="demo-subtitle">
-          New to ASL? Follow each diagram from start to finish (black arrows show hand movement), then pause briefly after each sign when testing live.
+          New to ASL? Browse the 15 dynamic words or A–Z fingerspelling handshapes below, then click Practice to try them live.
         </p>
       </div>
       <div class="demo-tools">
-        <input id="demoFilter" class="demo-search" type="search" placeholder="Filter signs (e.g. water)…" aria-label="Filter demo signs" />
-        <button id="btnTryWords" class="btn btn-primary btn-sm" type="button">Try Live in Words</button>
+        <div class="segmented" role="tablist" aria-label="Demo Sign Track">
+          <button id="demoSubWords" class="seg-btn active" type="button" role="tab" aria-selected="true">Words (15)</button>
+          <button id="demoSubLetters" class="seg-btn" type="button" role="tab" aria-selected="false">Letters (A–Z)</button>
+        </div>
+        <input id="demoFilter" class="demo-search" type="search" placeholder="Filter signs…" aria-label="Filter demo signs" />
+        <button id="btnTryWords" class="btn btn-primary btn-sm" type="button">Try Live</button>
+      </div>
+    </div>
+
+    <div id="demoLetterChartCard" class="card demo-chart-card hidden">
+      <div class="demo-chart-head">
+        <span class="eyebrow">ASL ALPHABET OVERVIEW (A–Z)</span>
+        <span class="meter-hint">Static handshapes + dynamic J &amp; Z motion</span>
+      </div>
+      <div class="demo-chart-media">
+        <img id="demoLetterChartImg" src="/demo_images/asl_alphabet_chart.jpg" alt="American Sign Language (ASL) Alphabet A to Z reference chart" loading="lazy" />
       </div>
     </div>
 

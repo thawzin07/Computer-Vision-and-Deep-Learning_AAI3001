@@ -1,0 +1,14 @@
+.git/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+calibration_data/
+datasets/
+colab/
+docs/
+tests/
+*.npz
+*.pt
+*.zip
+archive/

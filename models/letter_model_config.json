@@ -1,5 +1,7 @@
 {
   "feature_version": "letter_v1_hybrid_224_98",
+  "notebook_version": "2026-11-25",
+  "architecture": "HybridHandNetV2(ModalityDropout+Aux+SupCon)",
   "labels": [
     "A",
     "B",
@@ -30,6 +32,15 @@
   ],
   "crop_size": 224,
   "geo_dim": 98,
-  "test_top1_acc": 0.999,
-  "test_macro_f1": 0.9989
+  "int8_file": "asl_letters_hybrid_int8.onnx",
+  "fp32_size_mb": 17.931,
+  "int8_size_mb": 4.888,
+  "fp32_latency_ms": 10.937,
+  "int8_latency_ms": 135.167,
+  "test_top1_acc": 0.9984,
+  "test_macro_f1": 0.9984,
+  "int8_top1_acc": 0.9521,
+  "int8_macro_f1": 0.9531,
+  "cross_domain_top1_acc": 0.5024,
+  "cross_domain_macro_f1": 0.4464
 }
