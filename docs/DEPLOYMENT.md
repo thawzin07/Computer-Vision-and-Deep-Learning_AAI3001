@@ -46,7 +46,13 @@ docker compose up --build
 
 ---
 
-## 3. Model Optimization & Quantization Benchmark
+## 3. Vercel production and GitHub branches
+
+- `main` is the GitHub default branch and the Vercel production branch. Successful Vercel builds from `main` update [ASL Live](https://asl-live-aai3001.vercel.app/).
+- `thawzinhtun` is a personal development branch. Open a pull request into `main` to release changes from it.
+- Hosting CI runs on pushes and pull requests targeting `main`. It builds `Dockerfile`, runs the Python suite in that image, and checks the running container on `PORT=80` for model readiness, image upload, and live WebSocket responses in Words and Letters modes.
+
+## 4. Model Optimization & Quantization Benchmark
 
 * **Training Export (v2 Colab Notebooks):** Cell 10 of [01_Train_ASL_Words_Conformer_2026-11-19.ipynb](../colab/01_Train_ASL_Words_Conformer_2026-11-19.ipynb) and Cell 9 of [02_Train_ASL_Letters_Hybrid_2026-11-19.ipynb](../colab/02_Train_ASL_Letters_Hybrid_2026-11-19.ipynb) automatically export:
   * `asl_words_conformer.onnx` (FP32) + `asl_words_conformer_int8.onnx` (INT8 Dynamic Quantized) + `optimization_benchmark_words.csv`
