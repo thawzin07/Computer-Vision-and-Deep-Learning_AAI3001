@@ -31,6 +31,6 @@ RUN mkdir -p /app/calibration_data
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health', timeout=3)" || exit 1
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ['PORT'] + '/health', timeout=3)" || exit 1
 
-CMD ["python", "web_app.py", "--host", "0.0.0.0", "--port", "7860", "--no-browser"]
+CMD ["python", "web_app.py", "--no-browser"]
